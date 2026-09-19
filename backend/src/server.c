@@ -541,6 +541,52 @@ static enum MHD_Result handle_request(
             numeric_stats
         );
 
+        cJSON *preview = cJSON_CreateArray();
+
+        if (preview == NULL) {
+            cJSON_Delete(json);
+            free(context);
+            *con_cls = NULL;
+            return MHD_NO;
+        }
+
+        for (
+            int i = 0;
+            i < analysis.preview_rows;
+            i++
+        ) {
+            cJSON *preview_row = cJSON_CreateArray();
+
+            if (preview_row == NULL) {
+                cJSON_Delete(preview);
+                cJSON_Delete(json);
+                free(context);
+                *con_cls = NULL;
+                return MHD_NO;
+            }
+
+            for (
+                int j = 0;
+                j < analysis.columns;
+                j++
+            ) {
+                cJSON_AddItemToArray(
+                    preview_row,
+                    cJSON_CreateString(
+                        analysis.preview[i].values[j]
+                    )
+                );
+            }
+
+            cJSON_AddItemToArray(preview, preview_row);
+        }
+
+        cJSON_AddItemToObject(
+            json,
+            "preview",
+            preview
+        );
+
         /*
          * Converte o objeto cJSON para string.
          */

@@ -295,6 +295,7 @@ int analyze_csv(
      */
     result->rows = 0;
     result->columns = 0;
+    result->preview_rows = 0;
 
     double numeric_sums[MAX_COLUMNS] = {0};
     int numeric_counts[MAX_COLUMNS] = {0};
@@ -314,6 +315,14 @@ int analyze_csv(
         result->numeric_stats[i].minimum = 0.0;
         result->numeric_stats[i].maximum = 0.0;
         result->numeric_stats[i].average = 0.0;
+
+        for (
+            int j = 0;
+            j < MAX_PREVIEW_ROWS;
+            j++
+        ) {
+            result->preview[j].values[i][0] = '\0';
+        }
     }
 
 
@@ -421,12 +430,30 @@ int analyze_csv(
 
 
         int column_index = 0;
+        int is_preview_row =
+            result->preview_rows < MAX_PREVIEW_ROWS;
 
 
         while (
             token != NULL &&
             column_index < result->columns
         ) {
+
+            if (is_preview_row) {
+                strncpy(
+                    result->preview[
+                        result->preview_rows
+                    ].values[column_index],
+                    token,
+                    MAX_COLUMN_NAME_LENGTH - 1
+                );
+
+                result->preview[
+                    result->preview_rows
+                ].values[column_index][
+                    MAX_COLUMN_NAME_LENGTH - 1
+                ] = '\0';
+            }
 
             token = trim_whitespace(token);
 
@@ -506,6 +533,10 @@ int analyze_csv(
             column_index++;
 
             token = next_csv_field(&cursor);
+        }
+
+        if (is_preview_row) {
+            result->preview_rows++;
         }
     }
 
