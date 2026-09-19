@@ -1,0 +1,165 @@
+warning: in the working copy of 'backend/src/analyzer.c', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/server.c', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/uploads/upload.csv', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/backend/src/analyzer.c b/backend/src/analyzer.c[m
+[1mindex e03c790..c3393c2 100644[m
+[1m--- a/backend/src/analyzer.c[m
+[1m+++ b/backend/src/analyzer.c[m
+[36m@@ -43,6 +43,30 @@[m [mstatic char *trim_whitespace(char *text) {[m
+ }[m
+ [m
+ [m
+[32m+[m[32m/*[m
+[32m+[m[32m * Retorna o próximo campo separado por vírgula, incluindo[m
+[32m+[m[32m * campos vazios entre vírgulas e no final da linha.[m
+[32m+[m[32m */[m
+[32m+[m[32mstatic char *next_csv_field(char **cursor) {[m
+[32m+[m
+[32m+[m[32m    if (*cursor == NULL) {[m
+[32m+[m[32m        return NULL;[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    char *field = *cursor;[m
+[32m+[m[32m    char *separator = strchr(field, ',');[m
+[32m+[m
+[32m+[m[32m    if (separator != NULL) {[m
+[32m+[m[32m        *separator = '\0';[m
+[32m+[m[32m        *cursor = separator + 1;[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m        *cursor = NULL;[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    return field;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m
+ /*[m
+  * Verifica se um valor é booleano.[m
+  */[m
+[36m@@ -325,10 +349,8 @@[m [mint analyze_csv([m
+      * ======================================================[m
+      */[m
+ [m
+[31m-    char *token = strtok([m
+[31m-        line,[m
+[31m-        ","[m
+[31m-    );[m
+[32m+[m[32m    char *cursor = line;[m
+[32m+[m[32m    char *token = next_csv_field(&cursor);[m
+ [m
+     while ([m
+         token != NULL &&[m
+[36m@@ -352,10 +374,7 @@[m [mint analyze_csv([m
+ [m
+         result->columns++;[m
+ [m
+[31m-        token = strtok([m
+[31m-            NULL,[m
+[31m-            ","[m
+[31m-        );[m
+[32m+[m[32m        token = next_csv_field(&cursor);[m
+     }[m
+ [m
+ [m
+[36m@@ -390,10 +409,8 @@[m [mint analyze_csv([m
+         /*[m
+          * Começa novamente pela primeira coluna.[m
+          */[m
+[31m-        token = strtok([m
+[31m-            line,[m
+[31m-            ","[m
+[31m-        );[m
+[32m+[m[32m        cursor = line;[m
+[32m+[m[32m        token = next_csv_field(&cursor);[m
+ [m
+ [m
+         int column_index = 0;[m
+[36m@@ -417,10 +434,7 @@[m [mint analyze_csv([m
+ [m
+                 column_index++;[m
+ [m
+[31m-                token = strtok([m
+[31m-                    NULL,[m
+[31m-                    ","[m
+[31m-                );[m
+[32m+[m[32m                token = next_csv_field(&cursor);[m
+ [m
+                 continue;[m
+             }[m
+[36m@@ -448,10 +462,7 @@[m [mint analyze_csv([m
+ [m
+             column_index++;[m
+ [m
+[31m-            token = strtok([m
+[31m-                NULL,[m
+[31m-                ","[m
+[31m-            );[m
+[32m+[m[32m            token = next_csv_field(&cursor);[m
+         }[m
+     }[m
+ [m
+[36m@@ -459,4 +470,4 @@[m [mint analyze_csv([m
+     fclose(file);[m
+ [m
+     return 1;[m
+[31m-}[m
+\ No newline at end of file[m
+[32m+[m[32m}[m
+[1mdiff --git a/backend/src/server.c b/backend/src/server.c[m
+[1mindex b2feb43..8449ee8 100644[m
+[1m--- a/backend/src/server.c[m
+[1m+++ b/backend/src/server.c[m
+[36m@@ -447,6 +447,35 @@[m [mstatic enum MHD_Result handle_request([m
+             column_types[m
+         );[m
+ [m
+[32m+[m[32m        cJSON *missing_values =[m
+[32m+[m[32m            cJSON_CreateArray();[m
+[32m+[m
+[32m+[m[32m        if (missing_values == NULL) {[m
+[32m+[m[32m            cJSON_Delete(json);[m
+[32m+[m[32m            free(context);[m
+[32m+[m[32m            *con_cls = NULL;[m
+[32m+[m[32m            return MHD_NO;[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        for ([m
+[32m+[m[32m            int i = 0;[m
+[32m+[m[32m            i < analysis.columns;[m
+[32m+[m[32m            i++[m
+[32m+[m[32m        ) {[m
+[32m+[m[32m            cJSON_AddItemToArray([m
+[32m+[m[32m                missing_values,[m
+[32m+[m[32m                cJSON_CreateNumber([m
+[32m+[m[32m                    analysis.missing_values[i][m
+[32m+[m[32m                )[m
+[32m+[m[32m            );[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        cJSON_AddItemToObject([m
+[32m+[m[32m            json,[m
+[32m+[m[32m            "missing_values",[m
+[32m+[m[32m            missing_values[m
+[32m+[m[32m        );[m
+[32m+[m
+         /*[m
+          * Converte o objeto cJSON para string.[m
+          */[m
+[36m@@ -709,4 +738,4 @@[m [mint start_server(void) {[m
+     MHD_stop_daemon(daemon);[m
+ [m
+     return EXIT_SUCCESS;[m
+[31m-}[m
+\ No newline at end of file[m
+[32m+[m[32m}[m
+[1mdiff --git a/backend/uploads/upload.csv b/backend/uploads/upload.csv[m
+[1mindex 93a6b16..89cbd34 100644[m
+[1m--- a/backend/uploads/upload.csv[m
+[1m+++ b/backend/uploads/upload.csv[m
+[36m@@ -1,4 +1,4 @@[m
+ nome,idade,salario,ativo[m
+ Ramon,21,3500.50,true[m
+[31m-Joao,25,4200.00,false[m
+[31m-Maria,30,5100.75,true[m
+[32m+[m[32mJoao,,4200.00,false[m
+[32m+[m[32mMaria,30,,true[m

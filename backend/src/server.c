@@ -447,6 +447,35 @@ static enum MHD_Result handle_request(
             column_types
         );
 
+        cJSON *missing_values =
+            cJSON_CreateArray();
+
+        if (missing_values == NULL) {
+            cJSON_Delete(json);
+            free(context);
+            *con_cls = NULL;
+            return MHD_NO;
+        }
+
+        for (
+            int i = 0;
+            i < analysis.columns;
+            i++
+        ) {
+            cJSON_AddItemToArray(
+                missing_values,
+                cJSON_CreateNumber(
+                    analysis.missing_values[i]
+                )
+            );
+        }
+
+        cJSON_AddItemToObject(
+            json,
+            "missing_values",
+            missing_values
+        );
+
         /*
          * Converte o objeto cJSON para string.
          */

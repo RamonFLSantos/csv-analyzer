@@ -44,6 +44,30 @@ static char *trim_whitespace(char *text) {
 
 
 /*
+ * Retorna o próximo campo separado por vírgula, incluindo
+ * campos vazios entre vírgulas e no final da linha.
+ */
+static char *next_csv_field(char **cursor) {
+
+    if (*cursor == NULL) {
+        return NULL;
+    }
+
+    char *field = *cursor;
+    char *separator = strchr(field, ',');
+
+    if (separator != NULL) {
+        *separator = '\0';
+        *cursor = separator + 1;
+    } else {
+        *cursor = NULL;
+    }
+
+    return field;
+}
+
+
+/*
  * Verifica se um valor é booleano.
  */
 static int is_boolean(const char *value) {
@@ -325,10 +349,8 @@ int analyze_csv(
      * ======================================================
      */
 
-    char *token = strtok(
-        line,
-        ","
-    );
+    char *cursor = line;
+    char *token = next_csv_field(&cursor);
 
     while (
         token != NULL &&
@@ -352,10 +374,7 @@ int analyze_csv(
 
         result->columns++;
 
-        token = strtok(
-            NULL,
-            ","
-        );
+        token = next_csv_field(&cursor);
     }
 
 
@@ -390,10 +409,8 @@ int analyze_csv(
         /*
          * Começa novamente pela primeira coluna.
          */
-        token = strtok(
-            line,
-            ","
-        );
+        cursor = line;
+        token = next_csv_field(&cursor);
 
 
         int column_index = 0;
@@ -417,10 +434,7 @@ int analyze_csv(
 
                 column_index++;
 
-                token = strtok(
-                    NULL,
-                    ","
-                );
+                token = next_csv_field(&cursor);
 
                 continue;
             }
@@ -448,10 +462,7 @@ int analyze_csv(
 
             column_index++;
 
-            token = strtok(
-                NULL,
-                ","
-            );
+            token = next_csv_field(&cursor);
         }
     }
 
