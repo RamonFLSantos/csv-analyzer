@@ -1,14 +1,39 @@
-export function Header() {
+import type { Theme } from './ThemeToggle';
+import { ThemeToggle } from './ThemeToggle';
+
+type HeaderProps = {
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
+};
+
+export function Header({
+  theme,
+  onThemeChange,
+}: HeaderProps) {
   return (
-    <header className="site-header">
-      <a className="brand" href="/" aria-label="CSV Analyzer home">
-        <span className="brand-mark" aria-hidden="true">///</span>
-        <span>
-          <strong>CSV Analyzer</strong>
-          <small>Analyze your CSV data</small>
+    <header className="topbar">
+      <div
+        className="topbar__mobile-brand"
+        aria-label="CSV Analyzer"
+      >
+        <span
+          className="topbar__mobile-mark"
+          aria-hidden="true"
+        >
+          ///
         </span>
-      </a>
-      <span className="header-status">LOCAL WORKSPACE</span>
+
+        <strong>
+          CSV <em>Analyzer</em>
+        </strong>
+      </div>
+
+      <div className="topbar__right">
+        <ThemeToggle
+          theme={theme}
+          onChange={onThemeChange}
+        />
+      </div>
     </header>
   );
 }

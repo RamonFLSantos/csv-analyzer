@@ -1,28 +1,49 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DataPreview } from './components/DataPreview';
 import { Header } from './components/Header';
 import { NumericStats } from './components/NumericStats';
+import { Sidebar } from './components/Sidebar';
 import { StatCard } from './components/StatCard';
+import type { Theme as ThemeType } from './components/ThemeToggle';
 import { UploadCard } from './components/UploadCard';
 import { analyzeCsv } from './services/api';
 import type { CsvAnalysis } from './types/csv';
+
+function getInitialTheme(): ThemeType {
+  const storedTheme = localStorage.getItem('csv-analyzer-theme');
+
+  if (storedTheme === 'light' || storedTheme === 'dark') {
+    return storedTheme;
+  }
+
+  return window.matchMedia('(prefers-color-scheme: light)').matches
+    ? 'light'
+    : 'dark';
+}
 
 function App() {
   const [analysis, setAnalysis] = useState<CsvAnalysis | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<ThemeType>(getInitialTheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('csv-analyzer-theme', theme);
+  }, [theme]);
 
   const handleFileSelected = async (file: File) => {
-    setSelectedFile(file);
-    setError(null);
-    setAnalysis(null);
-
     if (!file.name.toLowerCase().endsWith('.csv')) {
-      setError('Please choose a CSV file.');
+      setSelectedFile(null);
+      setAnalysis(null);
+      setError('Selecione um arquivo CSV.');
       return;
     }
 
+    setSelectedFile(file);
+    setError(null);
+    setAnalysis(null);
     setIsLoading(true);
 
     try {
@@ -32,7 +53,7 @@ function App() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : 'Unable to analyze this file.',
+          : 'Não foi possível analisar o arquivo.',
       );
     } finally {
       setIsLoading(false);
@@ -44,35 +65,93 @@ function App() {
     : null;
 
   return (
-    <div className="app-shell">
-      <Header />
+    <div className="app-shell" id="top">
+      <Sidebar />
 
-      <main className="main-content">
-        <UploadCard
-          file={selectedFile}
-          isLoading={isLoading}
-          error={error}
-          onFileSelected={handleFileSelected}
-        />
+      <div className="app-main">
+        <Header theme={theme} onThemeChange={setTheme} />
 
-        <section className="dashboard" aria-label="Analysis dashboard preview">
-          <div className="section-heading">
-            <p className="eyebrow">ANALYSIS OVERVIEW</p>
-            <h2>{analysis ? 'Analysis complete' : 'Ready for your data'}</h2>
+        <main className="main-content">
+          <section className="hero" aria-labelledby="page-title">
+            <p className="eyebrow">BEM-VINDO</p>
+
+            <h1 id="page-title">
+              Analise seus dados em CSV
+            </h1>
+
+            <p>
+              Envie um arquivo e veja um resumo dos dados, uma amostra
+              das linhas e estatísticas numéricas.
+            </p>
+          </section>
+
+          <UploadCard
+            file={selectedFile}
+            isLoading={isLoading}
+            error={error}
+            onFileSelected={handleFileSelected}
+          />
+
+          <section
+            className="dashboard"
+            aria-label="Resumo da análise"
+          >
+            <div className="section-heading">
+              <div>
+                <h2>Panorama da análise</h2>
+
+                <p>
+                  {analysis
+                    ? 'Análise concluída com os dados enviados.'
+                    : 'Envie um arquivo para começar.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="metric-grid">
+              <StatCard
+                label="Linhas"
+                value={analysis ? String(analysis.rows) : '—'}
+                detail="Total de registros"
+                tone="green"
+              />
+
+              <StatCard
+                label="Colunas"
+                value={analysis ? String(analysis.columns) : '—'}
+                detail="Campos detectados"
+                tone="blue"
+              />
+
+              <StatCard
+                label="Valores ausentes"
+                value={
+                  missingValues === null
+                    ? '—'
+                    : String(missingValues)
+                }
+                detail="Em todas as colunas"
+                tone="amber"
+              />
+            </div>
+          </section>
+
+          <div className="analysis-grid">
+            <DataPreview analysis={analysis} />
+            <NumericStats analysis={analysis} />
           </div>
+        </main>
 
-          <div className="metric-grid">
-            <StatCard label="Rows" value={analysis ? String(analysis.rows) : '—'} detail="Total records" />
-            <StatCard label="Columns" value={analysis ? String(analysis.columns) : '—'} detail="Detected fields" />
-            <StatCard label="Missing Values" value={missingValues === null ? '—' : String(missingValues)} detail="Across all columns" />
-          </div>
-        </section>
+        <footer className="app-footer">
+          <span>
+            CSV Analyzer · análise de dados em CSV
+          </span>
 
-        <div className="analysis-grid">
-          <DataPreview analysis={analysis} />
-          <NumericStats analysis={analysis} />
-        </div>
-      </main>
+          <span>
+            Desenvolvido para portfólio
+          </span>
+        </footer>
+      </div>
     </div>
   );
 }
