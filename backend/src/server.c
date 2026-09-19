@@ -14,15 +14,76 @@
 #define UPLOAD_DIR "uploads"
 #define MAX_UPLOAD_SIZE (10 * 1024 * 1024)
 
+typedef enum {
+    UPLOAD_ERROR_NONE,
+    UPLOAD_ERROR_INVALID_FIELD,
+    UPLOAD_ERROR_MISSING_FILE,
+    UPLOAD_ERROR_TOO_LARGE,
+    UPLOAD_ERROR_WRITE
+} UploadError;
+
 typedef struct {
     FILE *file;
     char filename[256];
     size_t size;
-    int error;
+    UploadError error;
+    int received_file;
 
     struct MHD_PostProcessor *processor;
 
 } UploadContext;
+
+
+static enum MHD_Result queue_json_error(
+    struct MHD_Connection *connection,
+    unsigned int status_code,
+    const char *message
+) {
+    cJSON *json = cJSON_CreateObject();
+
+    if (json == NULL) {
+        return MHD_NO;
+    }
+
+    cJSON_AddStringToObject(json, "status", "error");
+    cJSON_AddStringToObject(json, "message", message);
+
+    char *json_string = cJSON_PrintUnformatted(json);
+    cJSON_Delete(json);
+
+    if (json_string == NULL) {
+        return MHD_NO;
+    }
+
+    struct MHD_Response *response =
+        MHD_create_response_from_buffer(
+            strlen(json_string),
+            (void *)json_string,
+            MHD_RESPMEM_MUST_COPY
+        );
+
+    cJSON_free(json_string);
+
+    if (response == NULL) {
+        return MHD_NO;
+    }
+
+    MHD_add_response_header(
+        response,
+        "Content-Type",
+        "application/json"
+    );
+
+    enum MHD_Result result = MHD_queue_response(
+        connection,
+        status_code,
+        response
+    );
+
+    MHD_destroy_response(response);
+
+    return result;
+}
 
 
 /*
@@ -53,10 +114,15 @@ static enum MHD_Result handle_upload(
         return MHD_NO;
     }
 
+    if (context->error != UPLOAD_ERROR_NONE) {
+        return MHD_YES;
+    }
+
     /*
      * Estamos interessados apenas no campo "file".
      */
     if (strcmp(key, "file") != 0) {
+        context->error = UPLOAD_ERROR_INVALID_FIELD;
         return MHD_YES;
     }
 
@@ -66,9 +132,11 @@ static enum MHD_Result handle_upload(
     if (context->file == NULL) {
 
         if (filename == NULL) {
-            context->error = 1;
-            return MHD_NO;
+            context->error = UPLOAD_ERROR_MISSING_FILE;
+            return MHD_YES;
         }
+
+        context->received_file = 1;
 
         strncpy(
             context->filename,
@@ -86,8 +154,8 @@ static enum MHD_Result handle_upload(
         );
 
         if (context->file == NULL) {
-            context->error = 1;
-            return MHD_NO;
+            context->error = UPLOAD_ERROR_WRITE;
+            return MHD_YES;
         }
     }
 
@@ -99,9 +167,9 @@ static enum MHD_Result handle_upload(
         /*
          * Verifica o limite antes de escrever.
          */
-        if (context->size + size > MAX_UPLOAD_SIZE) {
-            context->error = 1;
-            return MHD_NO;
+        if (size > MAX_UPLOAD_SIZE - context->size) {
+            context->error = UPLOAD_ERROR_TOO_LARGE;
+            return MHD_YES;
         }
 
         size_t written = fwrite(
@@ -112,8 +180,8 @@ static enum MHD_Result handle_upload(
         );
 
         if (written != size) {
-            context->error = 1;
-            return MHD_NO;
+            context->error = UPLOAD_ERROR_WRITE;
+            return MHD_YES;
         }
 
         context->size += written;
@@ -183,7 +251,11 @@ static enum MHD_Result handle_request(
             if (processor == NULL) {
                 free(context);
                 *con_cls = NULL;
-                return MHD_NO;
+                return queue_json_error(
+                    connection,
+                    MHD_HTTP_BAD_REQUEST,
+                    "arquivo nao enviado"
+                );
             }
 
             /*
@@ -210,8 +282,11 @@ static enum MHD_Result handle_request(
             *upload_data_size = 0;
 
             if (process_result == MHD_NO) {
-                context->error = 1;
-                return MHD_NO;
+                if (context->error == UPLOAD_ERROR_NONE) {
+                    context->error = UPLOAD_ERROR_WRITE;
+                }
+
+                return MHD_YES;
             }
 
             return MHD_YES;
@@ -239,41 +314,55 @@ static enum MHD_Result handle_request(
         /*
          * Verifica se ocorreu algum erro durante o upload.
          */
-        if (context->error) {
+        if (context->error != UPLOAD_ERROR_NONE) {
+            UploadError upload_error = context->error;
 
             free(context);
             *con_cls = NULL;
 
-            const char *response_data =
-                "{\"status\":\"error\",\"message\":\"Upload failed\"}";
-
-            struct MHD_Response *response =
-                MHD_create_response_from_buffer(
-                    strlen(response_data),
-                    (void *)response_data,
-                    MHD_RESPMEM_PERSISTENT
+            if (upload_error == UPLOAD_ERROR_TOO_LARGE) {
+                return queue_json_error(
+                    connection,
+                    MHD_HTTP_CONTENT_TOO_LARGE,
+                    "arquivo excede o tamanho maximo permitido"
                 );
-
-            if (response == NULL) {
-                return MHD_NO;
             }
 
-            MHD_add_response_header(
-                response,
-                "Content-Type",
-                "application/json"
-            );
-
-            enum MHD_Result result =
-                MHD_queue_response(
+            if (upload_error == UPLOAD_ERROR_WRITE) {
+                return queue_json_error(
                     connection,
-                    MHD_HTTP_BAD_REQUEST,
-                    response
+                    MHD_HTTP_INTERNAL_SERVER_ERROR,
+                    "erro interno no upload"
                 );
+            }
 
-            MHD_destroy_response(response);
+            return queue_json_error(
+                connection,
+                MHD_HTTP_BAD_REQUEST,
+                "arquivo nao enviado ou campo multipart invalido"
+            );
+        }
 
-            return result;
+        if (!context->received_file) {
+            free(context);
+            *con_cls = NULL;
+
+            return queue_json_error(
+                connection,
+                MHD_HTTP_BAD_REQUEST,
+                "arquivo nao enviado"
+            );
+        }
+
+        if (context->size == 0) {
+            free(context);
+            *con_cls = NULL;
+
+            return queue_json_error(
+                connection,
+                MHD_HTTP_BAD_REQUEST,
+                "arquivo vazio"
+            );
         }
 
 
@@ -303,36 +392,35 @@ static enum MHD_Result handle_request(
             free(context);
             *con_cls = NULL;
 
-            const char *response_data =
-                "{\"status\":\"error\",\"message\":\"Could not analyze CSV\"}";
-
-            struct MHD_Response *response =
-                MHD_create_response_from_buffer(
-                    strlen(response_data),
-                    (void *)response_data,
-                    MHD_RESPMEM_PERSISTENT
-                );
-
-            if (response == NULL) {
-                return MHD_NO;
-            }
-
-            MHD_add_response_header(
-                response,
-                "Content-Type",
-                "application/json"
+            return queue_json_error(
+                connection,
+                MHD_HTTP_INTERNAL_SERVER_ERROR,
+                "erro interno ao analisar CSV"
             );
+        }
 
-            enum MHD_Result result =
-                MHD_queue_response(
-                    connection,
-                    MHD_HTTP_INTERNAL_SERVER_ERROR,
-                    response
-                );
+        int has_valid_header = 0;
 
-            MHD_destroy_response(response);
+        for (
+            int i = 0;
+            i < analysis.columns;
+            i++
+        ) {
+            if (analysis.column_names[i][0] != '\0') {
+                has_valid_header = 1;
+                break;
+            }
+        }
 
-            return result;
+        if (!has_valid_header) {
+            free(context);
+            *con_cls = NULL;
+
+            return queue_json_error(
+                connection,
+                MHD_HTTP_BAD_REQUEST,
+                "CSV invalido: cabecalho ausente"
+            );
         }
 
 
@@ -447,6 +535,146 @@ static enum MHD_Result handle_request(
             column_types
         );
 
+        cJSON *missing_values =
+            cJSON_CreateArray();
+
+        if (missing_values == NULL) {
+            cJSON_Delete(json);
+            free(context);
+            *con_cls = NULL;
+            return MHD_NO;
+        }
+
+        for (
+            int i = 0;
+            i < analysis.columns;
+            i++
+        ) {
+            cJSON_AddItemToArray(
+                missing_values,
+                cJSON_CreateNumber(
+                    analysis.missing_values[i]
+                )
+            );
+        }
+
+        cJSON_AddItemToObject(
+            json,
+            "missing_values",
+            missing_values
+        );
+
+        cJSON *numeric_stats =
+            cJSON_CreateArray();
+
+        if (numeric_stats == NULL) {
+            cJSON_Delete(json);
+            free(context);
+            *con_cls = NULL;
+            return MHD_NO;
+        }
+
+        for (
+            int i = 0;
+            i < analysis.columns;
+            i++
+        ) {
+            if (
+                analysis.column_types[i] == COLUMN_TYPE_INTEGER ||
+                analysis.column_types[i] == COLUMN_TYPE_FLOAT
+            ) {
+                cJSON *stats = cJSON_CreateObject();
+
+                if (stats == NULL) {
+                    cJSON_Delete(numeric_stats);
+                    cJSON_Delete(json);
+                    free(context);
+                    *con_cls = NULL;
+                    return MHD_NO;
+                }
+
+                cJSON_AddNumberToObject(
+                    stats,
+                    "minimum",
+                    analysis.numeric_stats[i].minimum
+                );
+
+                cJSON_AddNumberToObject(
+                    stats,
+                    "maximum",
+                    analysis.numeric_stats[i].maximum
+                );
+
+                cJSON_AddNumberToObject(
+                    stats,
+                    "average",
+                    analysis.numeric_stats[i].average
+                );
+
+                cJSON_AddItemToArray(
+                    numeric_stats,
+                    stats
+                );
+            } else {
+                cJSON_AddItemToArray(
+                    numeric_stats,
+                    cJSON_CreateNull()
+                );
+            }
+        }
+
+        cJSON_AddItemToObject(
+            json,
+            "numeric_stats",
+            numeric_stats
+        );
+
+        cJSON *preview = cJSON_CreateArray();
+
+        if (preview == NULL) {
+            cJSON_Delete(json);
+            free(context);
+            *con_cls = NULL;
+            return MHD_NO;
+        }
+
+        for (
+            int i = 0;
+            i < analysis.preview_rows;
+            i++
+        ) {
+            cJSON *preview_row = cJSON_CreateArray();
+
+            if (preview_row == NULL) {
+                cJSON_Delete(preview);
+                cJSON_Delete(json);
+                free(context);
+                *con_cls = NULL;
+                return MHD_NO;
+            }
+
+            for (
+                int j = 0;
+                j < analysis.columns;
+                j++
+            ) {
+                cJSON_AddItemToArray(
+                    preview_row,
+                    cJSON_CreateString(
+                        analysis.preview[i].values[j]
+                    )
+                );
+            }
+
+            cJSON_AddItemToArray(preview, preview_row);
+        }
+
+        cJSON_AddItemToObject(
+            json,
+            "preview",
+            preview
+        );
+
         /*
          * Converte o objeto cJSON para string.
          */
@@ -521,31 +749,11 @@ static enum MHD_Result handle_request(
      */
 
     if (strcmp(method, "GET") != 0) {
-
-        const char *message =
-            "Method Not Allowed";
-
-        struct MHD_Response *response =
-            MHD_create_response_from_buffer(
-                strlen(message),
-                (void *)message,
-                MHD_RESPMEM_PERSISTENT
-            );
-
-        if (response == NULL) {
-            return MHD_NO;
-        }
-
-        enum MHD_Result result =
-            MHD_queue_response(
-                connection,
-                MHD_HTTP_METHOD_NOT_ALLOWED,
-                response
-            );
-
-        MHD_destroy_response(response);
-
-        return result;
+        return queue_json_error(
+            connection,
+            MHD_HTTP_METHOD_NOT_ALLOWED,
+            "metodo nao permitido"
+        );
     }
 
 
@@ -617,30 +825,11 @@ static enum MHD_Result handle_request(
      * ======================================================
      */
 
-    const char *message =
-        "Not Found";
-
-    struct MHD_Response *response =
-        MHD_create_response_from_buffer(
-            strlen(message),
-            (void *)message,
-            MHD_RESPMEM_PERSISTENT
-        );
-
-    if (response == NULL) {
-        return MHD_NO;
-    }
-
-    enum MHD_Result result =
-        MHD_queue_response(
-            connection,
-            MHD_HTTP_NOT_FOUND,
-            response
-        );
-
-    MHD_destroy_response(response);
-
-    return result;
+    return queue_json_error(
+        connection,
+        MHD_HTTP_NOT_FOUND,
+        "endpoint nao encontrado"
+    );
 }
 
 

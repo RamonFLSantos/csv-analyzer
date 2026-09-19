@@ -3,6 +3,7 @@
 
 #define MAX_COLUMNS 100
 #define MAX_COLUMN_NAME_LENGTH 128
+#define MAX_PREVIEW_ROWS 5
 
 typedef enum {
     COLUMN_TYPE_UNKNOWN,
@@ -13,6 +14,16 @@ typedef enum {
 } ColumnType;
 
 typedef struct {
+    double minimum;
+    double maximum;
+    double average;
+} NumericStats;
+
+typedef struct {
+    char values[MAX_COLUMNS][MAX_COLUMN_NAME_LENGTH];
+} PreviewRow;
+
+typedef struct {
     int rows;
     int columns;
 
@@ -21,6 +32,11 @@ typedef struct {
     ColumnType column_types[MAX_COLUMNS];
 
     int missing_values[MAX_COLUMNS];
+
+    NumericStats numeric_stats[MAX_COLUMNS];
+
+    PreviewRow preview[MAX_PREVIEW_ROWS];
+    int preview_rows;
 
 } CsvAnalysis;
 

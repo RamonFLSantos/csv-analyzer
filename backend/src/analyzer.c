@@ -44,6 +44,30 @@ static char *trim_whitespace(char *text) {
 
 
 /*
+ * Retorna o próximo campo separado por vírgula, incluindo
+ * campos vazios entre vírgulas e no final da linha.
+ */
+static char *next_csv_field(char **cursor) {
+
+    if (*cursor == NULL) {
+        return NULL;
+    }
+
+    char *field = *cursor;
+    char *separator = strchr(field, ',');
+
+    if (separator != NULL) {
+        *separator = '\0';
+        *cursor = separator + 1;
+    } else {
+        *cursor = NULL;
+    }
+
+    return field;
+}
+
+
+/*
  * Verifica se um valor é booleano.
  */
 static int is_boolean(const char *value) {
@@ -271,6 +295,10 @@ int analyze_csv(
      */
     result->rows = 0;
     result->columns = 0;
+    result->preview_rows = 0;
+
+    double numeric_sums[MAX_COLUMNS] = {0};
+    int numeric_counts[MAX_COLUMNS] = {0};
 
     for (
         int i = 0;
@@ -283,6 +311,18 @@ int analyze_csv(
             COLUMN_TYPE_UNKNOWN;
 
         result->missing_values[i] = 0;
+
+        result->numeric_stats[i].minimum = 0.0;
+        result->numeric_stats[i].maximum = 0.0;
+        result->numeric_stats[i].average = 0.0;
+
+        for (
+            int j = 0;
+            j < MAX_PREVIEW_ROWS;
+            j++
+        ) {
+            result->preview[j].values[i][0] = '\0';
+        }
     }
 
 
@@ -325,10 +365,8 @@ int analyze_csv(
      * ======================================================
      */
 
-    char *token = strtok(
-        line,
-        ","
-    );
+    char *cursor = line;
+    char *token = next_csv_field(&cursor);
 
     while (
         token != NULL &&
@@ -352,10 +390,7 @@ int analyze_csv(
 
         result->columns++;
 
-        token = strtok(
-            NULL,
-            ","
-        );
+        token = next_csv_field(&cursor);
     }
 
 
@@ -390,19 +425,35 @@ int analyze_csv(
         /*
          * Começa novamente pela primeira coluna.
          */
-        token = strtok(
-            line,
-            ","
-        );
+        cursor = line;
+        token = next_csv_field(&cursor);
 
 
         int column_index = 0;
+        int is_preview_row =
+            result->preview_rows < MAX_PREVIEW_ROWS;
 
 
         while (
             token != NULL &&
             column_index < result->columns
         ) {
+
+            if (is_preview_row) {
+                strncpy(
+                    result->preview[
+                        result->preview_rows
+                    ].values[column_index],
+                    token,
+                    MAX_COLUMN_NAME_LENGTH - 1
+                );
+
+                result->preview[
+                    result->preview_rows
+                ].values[column_index][
+                    MAX_COLUMN_NAME_LENGTH - 1
+                ] = '\0';
+            }
 
             token = trim_whitespace(token);
 
@@ -417,10 +468,7 @@ int analyze_csv(
 
                 column_index++;
 
-                token = strtok(
-                    NULL,
-                    ","
-                );
+                token = next_csv_field(&cursor);
 
                 continue;
             }
@@ -430,6 +478,42 @@ int analyze_csv(
             */
             ColumnType value_type =
                 detect_value_type(token);
+
+            if (
+                value_type == COLUMN_TYPE_INTEGER ||
+                value_type == COLUMN_TYPE_FLOAT
+            ) {
+                double value = strtod(token, NULL);
+
+                if (numeric_counts[column_index] == 0) {
+                    result->numeric_stats[column_index].minimum =
+                        value;
+
+                    result->numeric_stats[column_index].maximum =
+                        value;
+                } else {
+                    if (
+                        value < result->numeric_stats[
+                            column_index
+                        ].minimum
+                    ) {
+                        result->numeric_stats[column_index].minimum =
+                            value;
+                    }
+
+                    if (
+                        value > result->numeric_stats[
+                            column_index
+                        ].maximum
+                    ) {
+                        result->numeric_stats[column_index].maximum =
+                            value;
+                    }
+                }
+
+                numeric_sums[column_index] += value;
+                numeric_counts[column_index]++;
+            }
 
 
             /*
@@ -448,10 +532,26 @@ int analyze_csv(
 
             column_index++;
 
-            token = strtok(
-                NULL,
-                ","
-            );
+            token = next_csv_field(&cursor);
+        }
+
+        if (is_preview_row) {
+            result->preview_rows++;
+        }
+    }
+
+    for (
+        int i = 0;
+        i < result->columns;
+        i++
+    ) {
+        if (
+            (result->column_types[i] == COLUMN_TYPE_INTEGER ||
+             result->column_types[i] == COLUMN_TYPE_FLOAT) &&
+            numeric_counts[i] > 0
+        ) {
+            result->numeric_stats[i].average =
+                numeric_sums[i] / numeric_counts[i];
         }
     }
 
