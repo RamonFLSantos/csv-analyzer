@@ -1,0 +1,4 @@
+nome,idade,salario,ativo
+Ramon,21,3500.50,true
+Joao,,4200.00,false
+Maria,30,,true
