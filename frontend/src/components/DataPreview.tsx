@@ -1,12 +1,10 @@
-const rows = [
-  ['Ramon', '21', '3500.50', 'true'],
-  ['Joao', '—', '4200.00', 'false'],
-  ['Maria', '30', '5100.75', 'true'],
-];
+import type { CsvAnalysis } from '../types/csv';
 
-const columns = ['nome', 'idade', 'salario', 'ativo'];
+type DataPreviewProps = {
+  analysis: CsvAnalysis | null;
+};
 
-export function DataPreview() {
+export function DataPreview({ analysis }: DataPreviewProps) {
   return (
     <section className="panel data-preview" aria-labelledby="preview-title">
       <div className="panel-heading">
@@ -14,29 +12,37 @@ export function DataPreview() {
           <p className="eyebrow">SAMPLE</p>
           <h2 id="preview-title">Data Preview</h2>
         </div>
-        <span className="panel-meta">3 ROWS</span>
+        <span className="panel-meta">{analysis ? `${analysis.preview.length} ROWS` : 'WAITING'}</span>
       </div>
 
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              {columns.map((column) => <th key={column}>{column}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row[0]}>
-                {row.map((cell, index) => (
-                  <td className={cell === '—' ? 'is-empty' : ''} key={`${row[0]}-${columns[index]}`}>
-                    {cell}
-                  </td>
-                ))}
+      {analysis ? (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                {analysis.column_names.map((column, index) => <th key={`${column}-${index}`}>{column}</th>)}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {analysis.preview.map((row, rowIndex) => (
+                <tr key={`row-${rowIndex}`}>
+                  {analysis.column_names.map((column, columnIndex) => {
+                    const cell = row[columnIndex] ?? '';
+
+                    return (
+                      <td className={cell === '' ? 'is-empty' : ''} key={`${column}-${rowIndex}`}>
+                        {cell === '' ? '—' : cell}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="empty-panel-state">Upload a CSV to see the data preview.</p>
+      )}
     </section>
   );
 }

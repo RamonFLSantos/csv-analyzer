@@ -1,4 +1,12 @@
-import { DragEvent, ChangeEvent, useRef, useState } from 'react';
+import type { ChangeEvent, DragEvent } from 'react';
+import { useState } from 'react';
+
+type UploadCardProps = {
+  file: File | null;
+  isLoading: boolean;
+  error: string | null;
+  onFileSelected: (file: File) => void;
+};
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024) {
@@ -12,19 +20,18 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function UploadCard() {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+export function UploadCard({ file, isLoading, error, onFileSelected }: UploadCardProps) {
   const [isDragging, setIsDragging] = useState(false);
 
-  const selectFile = (file?: File) => {
-    if (file) {
-      setSelectedFile(file);
+  const selectFile = (selectedFile?: File) => {
+    if (!isLoading && selectedFile) {
+      onFileSelected(selectedFile);
     }
   };
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     selectFile(event.target.files?.[0]);
+    event.target.value = '';
   };
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
@@ -37,45 +44,46 @@ export function UploadCard() {
     <section className="upload-card" aria-labelledby="upload-title">
       <div className="upload-card__copy">
         <p className="eyebrow">INPUT FILE</p>
-        <h1 id="upload-title">Upload your CSV</h1>
-        <p>Drop a comma-separated file here to prepare an analysis.</p>
+        <h1 id="upload-title">{isLoading ? 'Analyzing...' : 'Upload your CSV'}</h1>
+        <p>{isLoading ? 'The analyzer is processing your data.' : 'Drop a comma-separated file here to prepare an analysis.'}</p>
       </div>
 
       <div
-        className={`drop-zone ${isDragging ? 'drop-zone--active' : ''}`}
-        onDragEnter={() => setIsDragging(true)}
+        className={`drop-zone ${isDragging ? 'drop-zone--active' : ''} ${isLoading ? 'drop-zone--loading' : ''}`}
+        onDragEnter={() => !isLoading && setIsDragging(true)}
         onDragOver={(event) => event.preventDefault()}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
       >
-        <span className="drop-zone__icon" aria-hidden="true">↑</span>
-        <p>Drag &amp; drop your file here</p>
-        <span>CSV files only</span>
+        <span className="drop-zone__icon" aria-hidden="true">{isLoading ? '…' : '↑'}</span>
+        <p>{isLoading ? 'Analyzing CSV…' : 'Drag & drop your file here'}</p>
+        <span>{isLoading ? 'Please wait' : 'CSV files only'}</span>
 
         <input
-          ref={inputRef}
           id="csv-file"
           className="visually-hidden"
           type="file"
           accept=".csv,text/csv"
           onChange={handleChange}
+          disabled={isLoading}
         />
-        <label className="button button--primary" htmlFor="csv-file">
-          Choose CSV
+        <label className={`button button--primary ${isLoading ? 'button--disabled' : ''}`} htmlFor="csv-file" aria-disabled={isLoading}>
+          {isLoading ? 'Analyzing…' : 'Choose CSV'}
         </label>
       </div>
 
       <div className="file-status" aria-live="polite">
-        {selectedFile ? (
+        {file ? (
           <>
             <span className="file-status__dot" aria-hidden="true" />
-            <span className="file-status__name">{selectedFile.name}</span>
-            <span>{formatFileSize(selectedFile.size)}</span>
+            <span className="file-status__name">{file.name}</span>
+            <span>{formatFileSize(file.size)}</span>
           </>
         ) : (
           <span>No file selected</span>
         )}
       </div>
+      {error && <p className="upload-error" role="alert">{error}</p>}
     </section>
   );
 }

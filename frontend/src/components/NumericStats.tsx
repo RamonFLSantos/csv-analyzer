@@ -1,9 +1,24 @@
-const statistics = [
-  { column: 'idade', minimum: '21', maximum: '30', average: '25.5' },
-  { column: 'salario', minimum: '3500.50', maximum: '5100.75', average: '4267.08' },
-];
+import type { CsvAnalysis } from '../types/csv';
 
-export function NumericStats() {
+type NumericStatsProps = {
+  analysis: CsvAnalysis | null;
+};
+
+const formatNumber = (value: number) => new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 12,
+}).format(value);
+
+export function NumericStats({ analysis }: NumericStatsProps) {
+  const statistics = analysis?.column_types.flatMap((columnType, index) => {
+    const stat = analysis.numeric_stats[index];
+
+    if ((columnType !== 'integer' && columnType !== 'float') || stat === null) {
+      return [];
+    }
+
+    return [{ column: analysis.column_names[index], ...stat }];
+  }) ?? [];
+
   return (
     <section className="panel numeric-stats" aria-labelledby="statistics-title">
       <div className="panel-heading">
@@ -11,21 +26,25 @@ export function NumericStats() {
           <p className="eyebrow">AGGREGATES</p>
           <h2 id="statistics-title">Numeric Statistics</h2>
         </div>
-        <span className="panel-meta">2 COLUMNS</span>
+        <span className="panel-meta">{analysis ? `${statistics.length} COLUMNS` : 'WAITING'}</span>
       </div>
 
-      <div className="stat-list">
-        {statistics.map((stat) => (
+      {analysis ? (
+        <div className="stat-list">
+          {statistics.map((stat) => (
           <article className="stat-row" key={stat.column}>
             <h3>{stat.column}</h3>
             <dl>
-              <div><dt>Min</dt><dd>{stat.minimum}</dd></div>
-              <div><dt>Max</dt><dd>{stat.maximum}</dd></div>
-              <div><dt>Avg</dt><dd>{stat.average}</dd></div>
+              <div><dt>Minimum</dt><dd>{formatNumber(stat.minimum)}</dd></div>
+              <div><dt>Maximum</dt><dd>{formatNumber(stat.maximum)}</dd></div>
+              <div><dt>Average</dt><dd>{formatNumber(stat.average)}</dd></div>
             </dl>
           </article>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-panel-state">Upload a CSV to see numeric statistics.</p>
+      )}
     </section>
   );
 }
