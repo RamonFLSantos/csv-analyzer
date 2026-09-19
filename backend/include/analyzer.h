@@ -13,6 +13,12 @@ typedef enum {
 } ColumnType;
 
 typedef struct {
+    double minimum;
+    double maximum;
+    double average;
+} NumericStats;
+
+typedef struct {
     int rows;
     int columns;
 
@@ -21,6 +27,8 @@ typedef struct {
     ColumnType column_types[MAX_COLUMNS];
 
     int missing_values[MAX_COLUMNS];
+
+    NumericStats numeric_stats[MAX_COLUMNS];
 
 } CsvAnalysis;
 

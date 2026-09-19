@@ -476,6 +476,71 @@ static enum MHD_Result handle_request(
             missing_values
         );
 
+        cJSON *numeric_stats =
+            cJSON_CreateArray();
+
+        if (numeric_stats == NULL) {
+            cJSON_Delete(json);
+            free(context);
+            *con_cls = NULL;
+            return MHD_NO;
+        }
+
+        for (
+            int i = 0;
+            i < analysis.columns;
+            i++
+        ) {
+            if (
+                analysis.column_types[i] == COLUMN_TYPE_INTEGER ||
+                analysis.column_types[i] == COLUMN_TYPE_FLOAT
+            ) {
+                cJSON *stats = cJSON_CreateObject();
+
+                if (stats == NULL) {
+                    cJSON_Delete(numeric_stats);
+                    cJSON_Delete(json);
+                    free(context);
+                    *con_cls = NULL;
+                    return MHD_NO;
+                }
+
+                cJSON_AddNumberToObject(
+                    stats,
+                    "minimum",
+                    analysis.numeric_stats[i].minimum
+                );
+
+                cJSON_AddNumberToObject(
+                    stats,
+                    "maximum",
+                    analysis.numeric_stats[i].maximum
+                );
+
+                cJSON_AddNumberToObject(
+                    stats,
+                    "average",
+                    analysis.numeric_stats[i].average
+                );
+
+                cJSON_AddItemToArray(
+                    numeric_stats,
+                    stats
+                );
+            } else {
+                cJSON_AddItemToArray(
+                    numeric_stats,
+                    cJSON_CreateNull()
+                );
+            }
+        }
+
+        cJSON_AddItemToObject(
+            json,
+            "numeric_stats",
+            numeric_stats
+        );
+
         /*
          * Converte o objeto cJSON para string.
          */

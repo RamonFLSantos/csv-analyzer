@@ -296,6 +296,9 @@ int analyze_csv(
     result->rows = 0;
     result->columns = 0;
 
+    double numeric_sums[MAX_COLUMNS] = {0};
+    int numeric_counts[MAX_COLUMNS] = {0};
+
     for (
         int i = 0;
         i < MAX_COLUMNS;
@@ -307,6 +310,10 @@ int analyze_csv(
             COLUMN_TYPE_UNKNOWN;
 
         result->missing_values[i] = 0;
+
+        result->numeric_stats[i].minimum = 0.0;
+        result->numeric_stats[i].maximum = 0.0;
+        result->numeric_stats[i].average = 0.0;
     }
 
 
@@ -445,6 +452,42 @@ int analyze_csv(
             ColumnType value_type =
                 detect_value_type(token);
 
+            if (
+                value_type == COLUMN_TYPE_INTEGER ||
+                value_type == COLUMN_TYPE_FLOAT
+            ) {
+                double value = strtod(token, NULL);
+
+                if (numeric_counts[column_index] == 0) {
+                    result->numeric_stats[column_index].minimum =
+                        value;
+
+                    result->numeric_stats[column_index].maximum =
+                        value;
+                } else {
+                    if (
+                        value < result->numeric_stats[
+                            column_index
+                        ].minimum
+                    ) {
+                        result->numeric_stats[column_index].minimum =
+                            value;
+                    }
+
+                    if (
+                        value > result->numeric_stats[
+                            column_index
+                        ].maximum
+                    ) {
+                        result->numeric_stats[column_index].maximum =
+                            value;
+                    }
+                }
+
+                numeric_sums[column_index] += value;
+                numeric_counts[column_index]++;
+            }
+
 
             /*
              * Combina com os valores
@@ -463,6 +506,21 @@ int analyze_csv(
             column_index++;
 
             token = next_csv_field(&cursor);
+        }
+    }
+
+    for (
+        int i = 0;
+        i < result->columns;
+        i++
+    ) {
+        if (
+            (result->column_types[i] == COLUMN_TYPE_INTEGER ||
+             result->column_types[i] == COLUMN_TYPE_FLOAT) &&
+            numeric_counts[i] > 0
+        ) {
+            result->numeric_stats[i].average =
+                numeric_sums[i] / numeric_counts[i];
         }
     }
 
